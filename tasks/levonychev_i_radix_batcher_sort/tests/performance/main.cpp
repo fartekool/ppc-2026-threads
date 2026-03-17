@@ -28,7 +28,12 @@ class LevonychevIRadixBatcherSortRunPerfTestsThreads : public ppc::util::BaseRun
   }
 
   bool CheckTestOutputData(OutType &output_data) final {
-    return !output_data.empty();
+        for (size_t i = 1; i < output_data.size(); ++i) {
+      if (output_data[i - 1] > output_data[i]) {
+        return false;
+      }
+    }
+    return true;
   }
 
   InType GetTestInputData() final {

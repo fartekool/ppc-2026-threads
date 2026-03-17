@@ -1,5 +1,8 @@
 #pragma once
 
+#include <cstddef>
+#include <vector>
+
 #include "levonychev_i_radix_batcher_sort/common/include/common.hpp"
 #include "task/include/task.hpp"
 
@@ -18,7 +21,7 @@ class LevonychevIRadixBatcherSortOMP : public BaseTask {
   bool RunImpl() override;
   bool PostProcessingImpl() override;
   static void CountingSort(InType &arr, size_t byte_index);
-  void BatcherMergeIterative(std::vector<int> &arr, int start_p);
+  void BatcherMergeIterative(std::vector<int> &arr, int start_p, int threads);
 };
 
 }  // namespace levonychev_i_radix_batcher_sort

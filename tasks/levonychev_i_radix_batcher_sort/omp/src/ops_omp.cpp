@@ -2,8 +2,9 @@
 
 #include <omp.h>
 
-#include <atomic>
-#include <numeric>
+#include <algorithm>
+#include <cstddef>
+#include <ranges>
 #include <vector>
 
 #include "levonychev_i_radix_batcher_sort/common/include/common.hpp"
@@ -56,22 +57,19 @@ bool LevonychevIRadixBatcherSortOMP::PreProcessingImpl() {
   return true;
 }
 
-void LevonychevIRadixBatcherSortOMP::BatcherMergeIterative(std::vector<int> &arr, int start_p) {
+void LevonychevIRadixBatcherSortOMP::BatcherMergeIterative(std::vector<int> &arr, int start_p, int threads) {
   int n = static_cast<int>(arr.size());
-  int num_threads = ppc::util::GetNumThreads();
-  for (int p = start_p; p < n; p <<= 1) {
-    int p2 = p << 1;
-    for (int k = p; k > 0; k >>= 1) {
-#pragma omp parallel for schedule(static) num_threads(num_threads)
-      for (int j = k % p; j < n - k; j += 2 * k) {
+  for (int pv = start_p; pv < n; pv <<= 1) {
+    int p2 = pv << 1;
+    for (int k = pv; k > 0; k >>= 1) {
+#pragma omp parallel for schedule(static) default(none) shared(n, pv, p2, k) num_threads(threads)
+      for (int j = k % pv; j < n - k; j += 2 * k) {
         int range = std::min(k, n - j - k);
         for (int i = 0; i < range; ++i) {
           int idx1 = j + i;
           int idx2 = j + i + k;
-          if ((idx1 & p2) == (idx2 & p2)) {
-            if (GetOutput()[idx1] > GetOutput()[idx2]) {
-              std::swap(GetOutput()[idx1], GetOutput()[idx2]);
-            }
+          if ((idx1 & p2) == (idx2 & p2) && (GetOutput()[idx1] > GetOutput()[idx2])) {
+            std::swap(GetOutput()[idx1], GetOutput()[idx2]);
           }
         }
       }
@@ -89,7 +87,7 @@ bool LevonychevIRadixBatcherSortOMP::RunImpl() {
   int num_threads = ppc::util::GetNumThreads();
   int block_size = n / num_threads;
 
-#pragma omp parallel num_threads(num_threads)
+#pragma omp parallel default(none) shared(num_threads, block_size, n, std::ranges::copy) num_threads(num_threads)
   {
     int tid = omp_get_thread_num();
     int left = tid * block_size;
@@ -100,7 +98,7 @@ bool LevonychevIRadixBatcherSortOMP::RunImpl() {
       for (size_t i = 0; i < sizeof(int); ++i) {
         CountingSort(local_block, i);
       }
-      std::copy(local_block.begin(), local_block.end(), GetOutput().begin() + left);
+      std::ranges::copy(local_block, GetOutput().begin() + left);
     }
   }
 
@@ -108,7 +106,7 @@ bool LevonychevIRadixBatcherSortOMP::RunImpl() {
   while (start_p < block_size) {
     start_p <<= 1;
   }
-  BatcherMergeIterative(GetOutput(), start_p);
+  BatcherMergeIterative(GetOutput(), start_p, num_threads);
 
   return true;
 }

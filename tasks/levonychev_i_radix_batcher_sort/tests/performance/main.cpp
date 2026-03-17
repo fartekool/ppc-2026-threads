@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <cstddef>
 #include <cstdint>
 
 #include "levonychev_i_radix_batcher_sort/common/include/common.hpp"

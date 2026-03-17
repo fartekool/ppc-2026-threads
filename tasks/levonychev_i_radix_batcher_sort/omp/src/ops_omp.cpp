@@ -57,21 +57,25 @@ bool LevonychevIRadixBatcherSortOMP::PreProcessingImpl() {
   return true;
 }
 
+void LevonychevIRadixBatcherSortOMP::BatcherCompareRange(std::vector<int> &arr, int j, int k, int p2) {
+  int range = std::min(k, static_cast<int>(arr.size()) - j - k);
+  for (int i = 0; i < range; ++i) {
+    int idx1 = j + i;
+    int idx2 = j + i + k;
+    if ((idx1 & p2) == (idx2 & p2) && (arr[idx1] > arr[idx2])) {
+      std::swap(arr[idx1], arr[idx2]);
+    }
+  }
+}
+
 void LevonychevIRadixBatcherSortOMP::BatcherMergeIterative(std::vector<int> &arr, int start_p, int threads) {
   int n = static_cast<int>(arr.size());
   for (int pv = start_p; pv < n; pv <<= 1) {
     int p2 = pv << 1;
     for (int k = pv; k > 0; k >>= 1) {
-#pragma omp parallel for schedule(static) default(none) shared(n, pv, p2, k) num_threads(threads)
+#pragma omp parallel for schedule(static) default(none) shared(n, pv, p2, k, arr) num_threads(threads)
       for (int j = k % pv; j < n - k; j += 2 * k) {
-        int range = std::min(k, n - j - k);
-        for (int i = 0; i < range; ++i) {
-          int idx1 = j + i;
-          int idx2 = j + i + k;
-          if ((idx1 & p2) == (idx2 & p2) && (GetOutput()[idx1] > GetOutput()[idx2])) {
-            std::swap(GetOutput()[idx1], GetOutput()[idx2]);
-          }
-        }
+        BatcherCompareRange(arr, j, k, p2);
       }
     }
   }

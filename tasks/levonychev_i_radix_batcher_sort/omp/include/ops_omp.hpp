@@ -22,6 +22,7 @@ class LevonychevIRadixBatcherSortOMP : public BaseTask {
   bool PostProcessingImpl() override;
   static void CountingSort(InType &arr, size_t byte_index);
   void BatcherMergeIterative(std::vector<int> &arr, int start_p, int threads);
+  static void BatcherCompareRange(std::vector<int> &arr, int j, int k, int p2);
 };
 
 }  // namespace levonychev_i_radix_batcher_sort

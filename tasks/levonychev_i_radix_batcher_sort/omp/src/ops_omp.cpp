@@ -56,33 +56,21 @@ bool LevonychevIRadixBatcherSortOMP::PreProcessingImpl() {
   return true;
 }
 
-inline void LevonychevIRadixBatcherSortOMP::CompareExchange(int &a, int &b) {
-  if (a > b) {
-    std::swap(a, b);
-  }
-}
-
-void LevonychevIRadixBatcherSortOMP::BatcherMergeIterative(std::vector<int> &arr) {
+void LevonychevIRadixBatcherSortOMP::BatcherMergeIterative(std::vector<int> &arr, int start_p) {
   int n = static_cast<int>(arr.size());
-  if (n < 2) {
-    return;
-  }
-  // int tnum = omp_get_max_threads();
-
-  for (int p = 1; p < n; p <<= 1) {
+  int num_threads = ppc::util::GetNumThreads();
+  for (int p = start_p; p < n; p <<= 1) {
+    int p2 = p << 1;
     for (int k = p; k > 0; k >>= 1) {
-#pragma omp parallel num_threads(8)
-      {
-#pragma omp for schedule(static)
-        for (int j = k % p; j < n - k; j += 2 * k) {
-          int range = std::min(k, n - j - k);
-          for (int i = 0; i < range; ++i) {
-            int idx1 = j + i;
-            int idx2 = j + i + k;
-            if (idx1 / (p * 2) == idx2 / (p * 2)) {
-              if (arr[idx1] > arr[idx2]) {
-                std::swap(arr[idx1], arr[idx2]);
-              }
+#pragma omp parallel for schedule(static) num_threads(num_threads)
+      for (int j = k % p; j < n - k; j += 2 * k) {
+        int range = std::min(k, n - j - k);
+        for (int i = 0; i < range; ++i) {
+          int idx1 = j + i;
+          int idx2 = j + i + k;
+          if ((idx1 & p2) == (idx2 & p2)) {
+            if (GetOutput()[idx1] > GetOutput()[idx2]) {
+              std::swap(GetOutput()[idx1], GetOutput()[idx2]);
             }
           }
         }
@@ -98,10 +86,9 @@ bool LevonychevIRadixBatcherSortOMP::RunImpl() {
     return true;
   }
 
-  int num_threads = omp_get_max_threads();
+  int num_threads = ppc::util::GetNumThreads();
   int block_size = n / num_threads;
 
-// 1. Параллельная локальная сортировка (Radix)
 #pragma omp parallel num_threads(num_threads)
   {
     int tid = omp_get_thread_num();
@@ -117,33 +104,11 @@ bool LevonychevIRadixBatcherSortOMP::RunImpl() {
     }
   }
 
-  // 2. Находим стартовое 'p'
-  // Если наши блоки размера block_size уже отсортированы,
-  // мы можем начать слияние сразу с p >= block_size.
   int start_p = 1;
   while (start_p < block_size) {
     start_p <<= 1;
   }
-
-  // 3. Запускаем модифицированный итеративный Бетчер
-  for (int p = 1; p < n; p <<= 1) {
-    int p2 = p << 1;
-    for (int k = p; k > 0; k >>= 1) {
-#pragma omp parallel for schedule(static)
-      for (int j = k % p; j < n - k; j += 2 * k) {
-        int range = std::min(k, n - j - k);
-        for (int i = 0; i < range; ++i) {
-          int idx1 = j + i;
-          int idx2 = j + i + k;
-          if ((idx1 & p2) == (idx2 & p2)) {
-            if (GetOutput()[idx1] > GetOutput()[idx2]) {
-              std::swap(GetOutput()[idx1], GetOutput()[idx2]);
-            }
-          }
-        }
-      }
-    }
-  }
+  BatcherMergeIterative(GetOutput(), start_p);
 
   return true;
 }

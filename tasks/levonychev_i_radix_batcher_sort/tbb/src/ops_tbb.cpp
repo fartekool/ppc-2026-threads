@@ -1,7 +1,10 @@
 #include "levonychev_i_radix_batcher_sort/tbb/include/ops_tbb.hpp"
 
-#include <omp.h>
+#include <tbb/parallel_for.h>
+#include <tbb/blocked_range.h>
+#include <tbb/global_control.h>
 
+#include <tbb/parallel_invoke.h>
 #include <algorithm>
 #include <cstddef>
 #include <ranges>
@@ -68,15 +71,17 @@ void LevonychevIRadixBatcherSortTBB::BatcherCompareRange(std::vector<int> &arr, 
   }
 }
 
-void LevonychevIRadixBatcherSortTBB::BatcherMergeIterative(std::vector<int> &arr, int start_p, int threads) {
+void LevonychevIRadixBatcherSortTBB::BatcherMergeIterative(std::vector<int> &arr, int start_p) {
   int n = static_cast<int>(arr.size());
   for (int pv = start_p; pv < n; pv <<= 1) {
     int p2 = pv << 1;
     for (int k = pv; k > 0; k >>= 1) {
-#pragma omp parallel for schedule(static) default(none) shared(n, pv, p2, k, arr) num_threads(threads)
-      for (int j = k % pv; j < n - k; j += 2 * k) {
+      int num_iters = (n - k - (k % pv) + 2 * k - 1) / (2 * k);
+      
+      tbb::parallel_for(0, num_iters, [&](int i) {
+        int j = (k % pv) + i * (2 * k);
         BatcherCompareRange(arr, j, k, p2);
-      }
+      });
     }
   }
 }
@@ -84,35 +89,28 @@ void LevonychevIRadixBatcherSortTBB::BatcherMergeIterative(std::vector<int> &arr
 bool LevonychevIRadixBatcherSortTBB::RunImpl() {
   GetOutput() = GetInput();
   int n = static_cast<int>(GetOutput().size());
-  if (n <= 1) {
+  if (n <= 1) return true;
+  int num_threads = 2;
+  int grain = std::max(1, n / num_threads);
 
-    return true;
-  }
-
-  int num_threads = ppc::util::GetNumThreads();
-  int block_size = n / num_threads;
-
-#pragma omp parallel default(none) shared(num_threads, block_size, n, std::ranges::copy) num_threads(num_threads)
-  {
-    int tid = omp_get_thread_num();
-    int left = tid * block_size;
-    int right = (tid == num_threads - 1) ? n : (tid + 1) * block_size;
-
-    if (left < right) {
-      std::vector<int> local_block(GetOutput().begin() + left, GetOutput().begin() + right);
-      for (size_t i = 0; i < sizeof(int); ++i) {
-        CountingSort(local_block, i);
-      }
-      std::ranges::copy(local_block, GetOutput().begin() + left);
+  tbb::parallel_for(tbb::blocked_range<int>(0, n, grain), [&](const tbb::blocked_range<int>& r) {
+    int left = r.begin();
+    int right = r.end();
+    
+    std::vector<int> local_block(GetOutput().begin() + left, GetOutput().begin() + right);
+    for (size_t i = 0; i < sizeof(int); ++i) {
+      CountingSort(local_block, i);
     }
-  }
+    std::ranges::copy(local_block, GetOutput().begin() + left);
+  });
 
+  int block_size = grain;
   int start_p = 1;
   while (start_p < block_size) {
     start_p <<= 1;
   }
-  BatcherMergeIterative(GetOutput(), start_p, num_threads);
-
+  
+  BatcherMergeIterative(GetOutput(), start_p);
   return true;
 }
 

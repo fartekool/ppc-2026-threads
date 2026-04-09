@@ -79,7 +79,7 @@ void LevonychevIRadixBatcherSortTBB::BatcherMergeIterative(std::vector<int> &arr
       int num_iters = (n - k - (k % pv) + 2 * k - 1) / (2 * k);
 
       tbb::parallel_for(0, num_iters, [&](int i) {
-        int j = (k % pv) + i * (2 * k);
+        int j = (k % pv) + (i * (2 * k));
         BatcherCompareRange(arr, j, k, p2);
       });
     }

@@ -1,10 +1,10 @@
 #include "levonychev_i_radix_batcher_sort/tbb/include/ops_tbb.hpp"
 
-#include <tbb/parallel_for.h>
 #include <tbb/blocked_range.h>
 #include <tbb/global_control.h>
-
+#include <tbb/parallel_for.h>
 #include <tbb/parallel_invoke.h>
+
 #include <algorithm>
 #include <cstddef>
 #include <ranges>
@@ -77,7 +77,7 @@ void LevonychevIRadixBatcherSortTBB::BatcherMergeIterative(std::vector<int> &arr
     int p2 = pv << 1;
     for (int k = pv; k > 0; k >>= 1) {
       int num_iters = (n - k - (k % pv) + 2 * k - 1) / (2 * k);
-      
+
       tbb::parallel_for(0, num_iters, [&](int i) {
         int j = (k % pv) + i * (2 * k);
         BatcherCompareRange(arr, j, k, p2);
@@ -89,14 +89,16 @@ void LevonychevIRadixBatcherSortTBB::BatcherMergeIterative(std::vector<int> &arr
 bool LevonychevIRadixBatcherSortTBB::RunImpl() {
   GetOutput() = GetInput();
   int n = static_cast<int>(GetOutput().size());
-  if (n <= 1) return true;
-  int num_threads = 2;
+  if (n <= 1) {
+    return true;
+  }
+  int num_threads = ppc::util::GetNumThreads();
   int grain = std::max(1, n / num_threads);
 
-  tbb::parallel_for(tbb::blocked_range<int>(0, n, grain), [&](const tbb::blocked_range<int>& r) {
+  tbb::parallel_for(tbb::blocked_range<int>(0, n, grain), [&](const tbb::blocked_range<int> &r) {
     int left = r.begin();
     int right = r.end();
-    
+
     std::vector<int> local_block(GetOutput().begin() + left, GetOutput().begin() + right);
     for (size_t i = 0; i < sizeof(int); ++i) {
       CountingSort(local_block, i);
@@ -109,7 +111,7 @@ bool LevonychevIRadixBatcherSortTBB::RunImpl() {
   while (start_p < block_size) {
     start_p <<= 1;
   }
-  
+
   BatcherMergeIterative(GetOutput(), start_p);
   return true;
 }

@@ -126,9 +126,9 @@ void LevonychevIRadixBatcherSortSTL::ParallelRadixPhase(std::vector<std::vector<
 
 void LevonychevIRadixBatcherSortSTL::BatcherMergePhase(std::vector<std::vector<int>> &blocks) {
   const int n_blocks = static_cast<int>(blocks.size());
-  for (int p = 1; p < n_blocks; p <<= 1) {
-    for (int k = p; k > 0; k >>= 1) {
-      BatcherMergeStep(blocks, p, k);
+  for (int pk = 1; pk < n_blocks; pk <<= 1) {
+    for (int k = pk; k > 0; k >>= 1) {
+      BatcherMergeStep(blocks, pk, k);
     }
   }
 }

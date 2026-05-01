@@ -33,13 +33,13 @@ void LevonychevIRadixBatcherSortSTL::RadixSortSequential(std::vector<int> &arr) 
       if (is_last_byte) {
         b ^= 0x80;
       }
-      count[b]++;
+      count.at(b)++;
     }
 
-    int offsets[256];
-    offsets[0] = 0;
+    std::array<size_t, 256> offsets{};
+    offsets.at(0) = 0;
     for (int i = 1; i < 256; ++i) {
-      offsets[i] = offsets[i - 1] + count[i - 1];
+      offsets.at(i) = offsets.at(i - 1) + count.at(i - 1);
     }
 
     for (int x : arr) {
@@ -47,7 +47,7 @@ void LevonychevIRadixBatcherSortSTL::RadixSortSequential(std::vector<int> &arr) 
       if (is_last_byte) {
         b ^= 0x80;
       }
-      buffer[offsets[b]++] = x;
+      buffer.at(offsets.at(b)++) = x;
     }
     arr = buffer;
   }
@@ -90,6 +90,7 @@ bool LevonychevIRadixBatcherSortSTL::RunImpl() {
     current_pos += size;
   }
   std::vector<std::future<void>> futures;
+  futures.reserve(static_cast<size_t>(num_blocks));
   for (int i = 0; i < num_blocks; ++i) {
     futures.push_back(std::async(std::launch::async, [&blocks, i]() { RadixSortSequential(blocks[i]); }));
   }

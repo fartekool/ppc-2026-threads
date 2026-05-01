@@ -20,7 +20,8 @@ class LevonychevIRadixBatcherSortSTL : public BaseTask {
   bool PreProcessingImpl() override;
   bool RunImpl() override;
   bool PostProcessingImpl() override;
-  static void CountingSort(InType &arr, size_t byte_index);
+  static void CountingSort(std::vector<int>& arr, std::vector<int>& buffer, size_t byte_index);
+  static void BatcherCompareRange(std::vector<int> &arr, int j, int k, int p2);
 };
 
 }  // namespace levonychev_i_radix_batcher_sort

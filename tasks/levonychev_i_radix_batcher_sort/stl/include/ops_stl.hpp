@@ -25,6 +25,7 @@ class LevonychevIRadixBatcherSortSTL : public BaseTask {
   static std::vector<std::vector<int>> DistributeData(const std::vector<int> &data, int num_blocks);
   static void ParallelRadixPhase(std::vector<std::vector<int>> &blocks);
   static void BatcherMergePhase(std::vector<std::vector<int>> &blocks);
+  static void BatcherMergeStep(std::vector<std::vector<int>> &blocks, int p, int k);
 };
 
 }  // namespace levonychev_i_radix_batcher_sort

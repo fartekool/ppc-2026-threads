@@ -77,7 +77,6 @@ bool LevonychevIRadixBatcherSortSTL::RunImpl() {
   ParallelRadixPhase(blocks);
   BatcherMergePhase(blocks);
 
-  // Сборка результата (Assemble)
   GetOutput().clear();
   GetOutput().reserve(data.size());
   for (const auto &b : blocks) {
@@ -117,8 +116,8 @@ void LevonychevIRadixBatcherSortSTL::ParallelRadixPhase(std::vector<std::vector<
   std::vector<std::future<void>> futures;
   futures.reserve(blocks.size());
 
-  for (size_t i = 0; i < blocks.size(); ++i) {
-    futures.push_back(std::async(std::launch::async, [&blocks, i]() { RadixSortSequential(blocks.at(i)); }));
+  for (auto &block : blocks) {
+    futures.push_back(std::async(std::launch::async, [&block]() { RadixSortSequential(block); }));
   }
   for (auto &f : futures) {
     f.wait();
@@ -127,26 +126,33 @@ void LevonychevIRadixBatcherSortSTL::ParallelRadixPhase(std::vector<std::vector<
 
 void LevonychevIRadixBatcherSortSTL::BatcherMergePhase(std::vector<std::vector<int>> &blocks) {
   const int n_blocks = static_cast<int>(blocks.size());
-  std::vector<std::future<void>> futures;
-
   for (int p = 1; p < n_blocks; p <<= 1) {
     for (int k = p; k > 0; k >>= 1) {
-      futures.clear();
-      futures.reserve(static_cast<size_t>(n_blocks));
+      BatcherMergeStep(blocks, p, k);
+    }
+  }
+}
 
-      for (int j = k % p; j <= n_blocks - 1 - k; j += 2 * k) {
-        for (int i = 0; i < std::min(k, n_blocks - j - k); ++i) {
-          if ((j + i) / (p * 2) == (j + i + k) / (p * 2)) {
-            futures.push_back(std::async(std::launch::async, [&blocks, idx1 = j + i, idx2 = j + i + k]() {
-              MergeAndSplit(blocks.at(static_cast<size_t>(idx1)), blocks.at(static_cast<size_t>(idx2)));
-            }));
-          }
-        }
-      }
-      for (auto &f : futures) {
-        f.wait();
+void LevonychevIRadixBatcherSortSTL::BatcherMergeStep(std::vector<std::vector<int>> &blocks, int p, int k) {
+  const int n_blocks = static_cast<int>(blocks.size());
+  std::vector<std::future<void>> futures;
+  futures.reserve(static_cast<size_t>(n_blocks));
+
+  for (int j = k % p; j <= n_blocks - 1 - k; j += 2 * k) {
+    for (int i = 0; i < std::min(k, n_blocks - j - k); ++i) {
+      int idx1 = j + i;
+      int idx2 = j + i + k;
+
+      if ((idx1 / (p * 2)) == (idx2 / (p * 2))) {
+        futures.push_back(std::async(std::launch::async, [&blocks, idx1, idx2]() {
+          MergeAndSplit(blocks.at(static_cast<size_t>(idx1)), blocks.at(static_cast<size_t>(idx2)));
+        }));
       }
     }
+  }
+
+  for (auto &f : futures) {
+    f.wait();
   }
 }
 

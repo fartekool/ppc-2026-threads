@@ -65,64 +65,89 @@ void LevonychevIRadixBatcherSortSTL::MergeAndSplit(std::vector<int> &left_block,
 }
 
 bool LevonychevIRadixBatcherSortSTL::RunImpl() {
-  std::vector<int> data = GetInput();
-  int n = static_cast<int>(data.size());
-  if (n <= 1) {
+  const std::vector<int> data = GetInput();
+  if (data.size() <= 1) {
     GetOutput() = data;
     return true;
   }
 
-  int num_blocks = 1;
-  unsigned int threads_supported = std::thread::hardware_concurrency();
-  int max_threads = static_cast<int>(threads_supported == 0 ? 2 : threads_supported);
-  while (num_blocks * 2 <= max_threads) {
-    num_blocks *= 2;
-  }
+  const int num_blocks = GetNumBlocks(static_cast<int>(data.size()));
+  auto blocks = DistributeData(data, num_blocks);
 
-  std::vector<std::vector<int>> blocks(num_blocks);
-  int base_size = n / num_blocks;
-  int extra = n % num_blocks;
+  ParallelRadixPhase(blocks);
+  BatcherMergePhase(blocks);
 
-  int current_pos = 0;
-  for (int i = 0; i < num_blocks; ++i) {
-    int size = base_size + (i < extra ? 1 : 0);
-    blocks[i].assign(data.begin() + current_pos, data.begin() + current_pos + size);
-    current_pos += size;
-  }
-  std::vector<std::future<void>> futures;
-  futures.reserve(static_cast<size_t>(num_blocks));
-  for (int i = 0; i < num_blocks; ++i) {
-    futures.push_back(std::async(std::launch::async, [&blocks, i]() { RadixSortSequential(blocks[i]); }));
-  }
-  for (auto &f : futures) {
-    f.wait();
-  }
-  futures.clear();
-  for (int p = 1; p < num_blocks; p <<= 1) {
-    for (int k = p; k > 0; k >>= 1) {
-      for (int j = k % p; j <= num_blocks - 1 - k; j += 2 * k) {
-        futures.reserve(static_cast<size_t>(num_blocks));
-        for (int i = 0; i < std::min(k, num_blocks - j - k); ++i) {
-          if ((j + i) / (p * 2) == (j + i + k) / (p * 2)) {
-            futures.push_back(std::async(std::launch::async, [&blocks, idx1 = j + i, idx2 = j + i + k]() {
-              MergeAndSplit(blocks[idx1], blocks[idx2]);
-            }));
-          }
-        }
-        for (auto &f : futures) {
-          f.wait();
-        }
-        futures.clear();
-      }
-    }
-  }
+  // Сборка результата (Assemble)
   GetOutput().clear();
-  GetOutput().reserve(n);
+  GetOutput().reserve(data.size());
   for (const auto &b : blocks) {
     GetOutput().insert(GetOutput().end(), b.begin(), b.end());
   }
 
   return true;
+}
+
+int LevonychevIRadixBatcherSortSTL::GetNumBlocks(int n) {
+  unsigned int threads_supported = std::thread::hardware_concurrency();
+  int max_threads = static_cast<int>(threads_supported == 0 ? 2 : threads_supported);
+  int num_blocks = 1;
+  while (num_blocks * 2 <= max_threads && num_blocks * 2 <= n) {
+    num_blocks *= 2;
+  }
+  return num_blocks;
+}
+
+std::vector<std::vector<int>> LevonychevIRadixBatcherSortSTL::DistributeData(const std::vector<int> &data,
+                                                                             int num_blocks) {
+  std::vector<std::vector<int>> blocks(num_blocks);
+  const int n = static_cast<int>(data.size());
+  const int base_size = n / num_blocks;
+  const int extra = n % num_blocks;
+
+  int current_pos = 0;
+  for (int i = 0; i < num_blocks; ++i) {
+    int size = base_size + (i < extra ? 1 : 0);
+    blocks.at(i).assign(data.begin() + current_pos, data.begin() + current_pos + size);
+    current_pos += size;
+  }
+  return blocks;
+}
+
+void LevonychevIRadixBatcherSortSTL::ParallelRadixPhase(std::vector<std::vector<int>> &blocks) {
+  std::vector<std::future<void>> futures;
+  futures.reserve(blocks.size());
+
+  for (size_t i = 0; i < blocks.size(); ++i) {
+    futures.push_back(std::async(std::launch::async, [&blocks, i]() { RadixSortSequential(blocks.at(i)); }));
+  }
+  for (auto &f : futures) {
+    f.wait();
+  }
+}
+
+void LevonychevIRadixBatcherSortSTL::BatcherMergePhase(std::vector<std::vector<int>> &blocks) {
+  const int n_blocks = static_cast<int>(blocks.size());
+  std::vector<std::future<void>> futures;
+
+  for (int p = 1; p < n_blocks; p <<= 1) {
+    for (int k = p; k > 0; k >>= 1) {
+      futures.clear();
+      futures.reserve(static_cast<size_t>(n_blocks));
+
+      for (int j = k % p; j <= n_blocks - 1 - k; j += 2 * k) {
+        for (int i = 0; i < std::min(k, n_blocks - j - k); ++i) {
+          if ((j + i) / (p * 2) == (j + i + k) / (p * 2)) {
+            futures.push_back(std::async(std::launch::async, [&blocks, idx1 = j + i, idx2 = j + i + k]() {
+              MergeAndSplit(blocks.at(static_cast<size_t>(idx1)), blocks.at(static_cast<size_t>(idx2)));
+            }));
+          }
+        }
+      }
+      for (auto &f : futures) {
+        f.wait();
+      }
+    }
+  }
 }
 
 bool LevonychevIRadixBatcherSortSTL::ValidationImpl() {

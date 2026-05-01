@@ -1,14 +1,15 @@
 #include "levonychev_i_radix_batcher_sort/stl/include/ops_stl.hpp"
 
 #include <algorithm>
-#include <barrier>
+#include <array>
 #include <cmath>
+#include <cstddef>
 #include <future>
+#include <iterator>
 #include <thread>
 #include <vector>
 
 #include "levonychev_i_radix_batcher_sort/common/include/common.hpp"
-#include "util/include/util.hpp"
 namespace levonychev_i_radix_batcher_sort {
 
 LevonychevIRadixBatcherSortSTL::LevonychevIRadixBatcherSortSTL(const InType &in) {
@@ -24,7 +25,7 @@ void LevonychevIRadixBatcherSortSTL::RadixSortSequential(std::vector<int> &arr) 
   std::vector<int> buffer(n);
 
   for (int byte_idx = 0; byte_idx < 4; ++byte_idx) {
-    int count[256] = {0};
+    std::array<int, 256> count{};
     bool is_last_byte = (byte_idx == 3);
 
     for (int x : arr) {
@@ -56,9 +57,9 @@ void LevonychevIRadixBatcherSortSTL::MergeAndSplit(std::vector<int> &left_block,
   std::vector<int> merged;
   merged.reserve(left_block.size() + right_block.size());
 
-  std::merge(left_block.begin(), left_block.end(), right_block.begin(), right_block.end(), std::back_inserter(merged));
+  std::ranges::merge(left_block, right_block, std::back_inserter(merged));
 
-  size_t mid = left_block.size();
+  auto mid = static_cast<std::ptrdiff_t>(left_block.size());
   std::copy(merged.begin(), merged.begin() + mid, left_block.begin());
   std::copy(merged.begin() + mid, merged.end(), right_block.begin());
 }
@@ -72,7 +73,8 @@ bool LevonychevIRadixBatcherSortSTL::RunImpl() {
   }
 
   int num_blocks = 1;
-  int max_threads = std::thread::hardware_concurrency();
+  unsigned int threads_supported = std::thread::hardware_concurrency();
+  int max_threads = static_cast<int>(threads_supported == 0 ? 2 : threads_supported);
   while (num_blocks * 2 <= max_threads) {
     num_blocks *= 2;
   }
@@ -98,6 +100,7 @@ bool LevonychevIRadixBatcherSortSTL::RunImpl() {
   for (int p = 1; p < num_blocks; p <<= 1) {
     for (int k = p; k > 0; k >>= 1) {
       for (int j = k % p; j <= num_blocks - 1 - k; j += 2 * k) {
+        futures.reserve(static_cast<size_t>(num_blocks));
         for (int i = 0; i < std::min(k, num_blocks - j - k); ++i) {
           if ((j + i) / (p * 2) == (j + i + k) / (p * 2)) {
             futures.push_back(std::async(std::launch::async, [&blocks, idx1 = j + i, idx2 = j + i + k]() {

@@ -1,6 +1,5 @@
 #pragma once
 
-#include <cstddef>
 #include <vector>
 
 #include "levonychev_i_radix_batcher_sort/common/include/common.hpp"

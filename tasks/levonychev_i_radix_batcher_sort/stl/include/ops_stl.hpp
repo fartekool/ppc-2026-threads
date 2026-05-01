@@ -20,8 +20,8 @@ class LevonychevIRadixBatcherSortSTL : public BaseTask {
   bool PreProcessingImpl() override;
   bool RunImpl() override;
   bool PostProcessingImpl() override;
-  static void RadixSortSequential(std::vector<int>& arr);
-  static void MergeAndSplit(std::vector<int>& left_block, std::vector<int>& right_block);
+  static void RadixSortSequential(std::vector<int> &arr);
+  static void MergeAndSplit(std::vector<int> &left_block, std::vector<int> &right_block);
 };
 
 }  // namespace levonychev_i_radix_batcher_sort

@@ -1,7 +1,9 @@
 #pragma once
 
-#include <vector>
 #include <mpi.h>
+
+#include <vector>
+
 #include "levonychev_i_radix_batcher_sort/common/include/common.hpp"
 #include "task/include/task.hpp"
 
@@ -19,11 +21,15 @@ class LevonychevIRadixBatcherSortALL : public BaseTask {
   bool PreProcessingImpl() override;
   bool RunImpl() override;
   bool PostProcessingImpl() override;
-  static void LocalRadixSort(std::vector<int>& arr);
-  static void LocalParallelMerge(std::vector<std::vector<int>>& blocks);
-  
-  // Сетевые методы (MPI)
-  static void NetworkMergeAndSplit(std::vector<int>& local_data, int partner, bool keep_low);
+  static void LocalRadixSort(std::vector<int> &arr);
+  static void LocalParallelMerge(std::vector<std::vector<int>> &blocks);
+
+  static void NetworkMergeAndSplit(std::vector<int> &local_data, int partner, bool keep_low);
+
+  static void CalculateDistribution(int total_n, int size, std::vector<int> &counts, std::vector<int> &displs);
+  static void LocalSortPhase(std::vector<int> &local_data);
+  static void LocalBatcherMerge(std::vector<std::vector<int>> &blocks);
+  static void GlobalSortPhase(std::vector<int> &local_data, int rank, int size);
 };
 
 }  // namespace levonychev_i_radix_batcher_sort

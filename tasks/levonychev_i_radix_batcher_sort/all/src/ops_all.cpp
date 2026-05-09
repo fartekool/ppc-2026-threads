@@ -1,5 +1,7 @@
 #include "levonychev_i_radix_batcher_sort/all/include/ops_all.hpp"
 
+#include <mpi.h>
+
 #include <algorithm>
 #include <array>
 #include <cmath>

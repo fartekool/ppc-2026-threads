@@ -130,8 +130,10 @@ void LevonychevIRadixBatcherSortALL::CompareAndMergeBlocks(std::vector<int> &b1,
   std::ranges::merge(b1, b2, std::back_inserter(merged));
 
   auto mid = b1.size();
-  b1.assign(merged.begin(), merged.begin() + mid);
-  b2.assign(merged.begin() + mid, merged.end());
+  auto mid_diff = static_cast<std::ptrdiff_t>(mid);
+
+  b1.assign(merged.begin(), merged.begin() + mid_diff);
+  b2.assign(merged.begin() + mid_diff, merged.end());
 }
 
 void LevonychevIRadixBatcherSortALL::BatcherStep(std::vector<std::vector<int>> &blocks, int pr, int k) {
@@ -186,23 +188,25 @@ void LevonychevIRadixBatcherSortALL::GlobalBatcherStep(std::vector<int> &local_d
 }
 
 void LevonychevIRadixBatcherSortALL::GlobalSortPhase(std::vector<int> &local_data, int rank, int size) {
-  for (int p = 1; p < size; p <<= 1) {
-    for (int k = p; k > 0; k >>= 1) {
-      GlobalBatcherStep(local_data, rank, size, p, k);
+  for (int pr = 1; pr < size; pr <<= 1) {
+    for (int k = pr; k > 0; k >>= 1) {
+      GlobalBatcherStep(local_data, rank, size, pr, k);
       MPI_Barrier(MPI_COMM_WORLD);
     }
   }
 }
 
 bool LevonychevIRadixBatcherSortALL::RunImpl() {
-  int rank, size;
+  int rank = 0;
+  int size = 0;
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   MPI_Comm_size(MPI_COMM_WORLD, &size);
 
   const std::vector<int> &input = GetInput();
   int total_n = static_cast<int>(input.size());
 
-  std::vector<int> send_counts(size), displs(size);
+  std::vector<int> send_counts(size);
+  std::vector<int> displs(size);
   CalculateDistribution(total_n, size, send_counts, displs);
 
   std::vector<int> local_data(send_counts[rank]);
@@ -217,8 +221,8 @@ bool LevonychevIRadixBatcherSortALL::RunImpl() {
     result.resize(total_n);
   }
 
-  MPI_Gatherv(local_data.data(), local_data.size(), MPI_INT, result.data(), send_counts.data(), displs.data(), MPI_INT,
-              0, MPI_COMM_WORLD);
+  MPI_Gatherv(local_data.data(), static_cast<int>(local_data.size()), MPI_INT, result.data(), send_counts.data(),
+              displs.data(), MPI_INT, 0, MPI_COMM_WORLD);
 
   if (rank == 0) {
     GetOutput() = result;
@@ -228,7 +232,7 @@ bool LevonychevIRadixBatcherSortALL::RunImpl() {
 }
 
 bool LevonychevIRadixBatcherSortALL::ValidationImpl() {
-  int rank;
+  int rank = 0;
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   if (rank == 0) {
     return !GetInput().empty();

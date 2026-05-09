@@ -27,6 +27,10 @@ class LevonychevIRadixBatcherSortALL : public BaseTask {
   static void CalculateDistribution(int total_n, int size, std::vector<int> &counts, std::vector<int> &displs);
   static void LocalSortPhase(std::vector<int> &local_data);
   static void LocalBatcherMerge(std::vector<std::vector<int>> &blocks);
+  static void BatcherStep(std::vector<std::vector<int>> &blocks, int pr, int k);
+  static void CompareAndMergeBlocks(std::vector<int> &b1, std::vector<int> &b2);
+  static void GlobalCompareExchange(std::vector<int> &local_data, int rank, int i1, int i2);
+  static void GlobalBatcherStep(std::vector<int> &local_data, int rank, int size, int p, int k);
   static void GlobalSortPhase(std::vector<int> &local_data, int rank, int size);
 };
 

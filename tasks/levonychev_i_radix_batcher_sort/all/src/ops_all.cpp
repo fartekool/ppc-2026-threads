@@ -58,7 +58,7 @@ void LevonychevIRadixBatcherSortALL::LocalRadixSort(std::vector<int> &arr) {
 
 void LevonychevIRadixBatcherSortALL::NetworkMergeAndSplit(std::vector<int> &local_data, int partner, bool keep_low) {
   int local_size = static_cast<int>(local_data.size());
-  int partner_size;
+  int partner_size = 0;
 
   MPI_Sendrecv(&local_size, 1, MPI_INT, partner, 0, &partner_size, 1, MPI_INT, partner, 0, MPI_COMM_WORLD,
                MPI_STATUS_IGNORE);
@@ -120,28 +120,66 @@ void LevonychevIRadixBatcherSortALL::LocalSortPhase(std::vector<int> &local_data
   }
 }
 
+void LevonychevIRadixBatcherSortALL::CompareAndMergeBlocks(std::vector<int> &b1, std::vector<int> &b2) {
+  if (b1.empty() || b2.empty()) {
+    return;
+  }
+
+  std::vector<int> merged;
+  merged.reserve(b1.size() + b2.size());
+  std::ranges::merge(b1, b2, std::back_inserter(merged));
+
+  auto mid = b1.size();
+  b1.assign(merged.begin(), merged.begin() + mid);
+  b2.assign(merged.begin() + mid, merged.end());
+}
+
+void LevonychevIRadixBatcherSortALL::BatcherStep(std::vector<std::vector<int>> &blocks, int pr, int k) {
+  int n_blocks = static_cast<int>(blocks.size());
+  std::vector<std::future<void>> m_futures;
+
+  for (int j = k % pr; j <= n_blocks - 1 - k; j += 2 * k) {
+    for (int i = 0; i < std::min(k, n_blocks - j - k); ++i) {
+      int i1 = j + i;
+      int i2 = j + i + k;
+
+      if ((i1 / (pr * 2)) == (i2 / (pr * 2))) {
+        m_futures.push_back(
+            std::async(std::launch::async, [&blocks, i1, i2]() { CompareAndMergeBlocks(blocks[i1], blocks[i2]); }));
+      }
+    }
+  }
+
+  for (auto &f : m_futures) {
+    f.wait();
+  }
+}
+
 void LevonychevIRadixBatcherSortALL::LocalBatcherMerge(std::vector<std::vector<int>> &blocks) {
   int n_blocks = static_cast<int>(blocks.size());
-  for (int p = 1; p < n_blocks; p <<= 1) {
-    for (int k = p; k > 0; k >>= 1) {
-      std::vector<std::future<void>> m_futures;
-      for (int j = k % p; j <= n_blocks - 1 - k; j += 2 * k) {
-        for (int i = 0; i < std::min(k, n_blocks - j - k); ++i) {
-          int i1 = j + i;
-          int i2 = j + i + k;
-          if ((i1 / (p * 2)) == (i2 / (p * 2)) && !blocks[i1].empty() && !blocks[i2].empty()) {
-            m_futures.push_back(std::async(std::launch::async, [&blocks, i1, i2]() {
-              std::vector<int> m;
-              std::ranges::merge(blocks[i1], blocks[i2], std::back_inserter(m));
-              auto mid = blocks[i1].size();
-              blocks[i1].assign(m.begin(), m.begin() + mid);
-              blocks[i2].assign(m.begin() + mid, m.end());
-            }));
-          }
-        }
-      }
-      for (auto &f : m_futures) {
-        f.wait();
+
+  for (int pr = 1; pr < n_blocks; pr <<= 1) {
+    for (int k = pr; k > 0; k >>= 1) {
+      BatcherStep(blocks, pr, k);
+    }
+  }
+}
+
+void LevonychevIRadixBatcherSortALL::GlobalCompareExchange(std::vector<int> &local_data, int rank, int i1, int i2) {
+  if (rank == i1) {
+    NetworkMergeAndSplit(local_data, i2, true);
+  } else if (rank == i2) {
+    NetworkMergeAndSplit(local_data, i1, false);
+  }
+}
+void LevonychevIRadixBatcherSortALL::GlobalBatcherStep(std::vector<int> &local_data, int rank, int size, int p, int k) {
+  for (int j = k % p; j <= size - 1 - k; j += 2 * k) {
+    for (int i = 0; i < std::min(k, size - j - k); ++i) {
+      int idx1 = j + i;
+      int idx2 = j + i + k;
+
+      if ((idx1 / (p * 2)) == (idx2 / (p * 2))) {
+        GlobalCompareExchange(local_data, rank, idx1, idx2);
       }
     }
   }
@@ -150,19 +188,7 @@ void LevonychevIRadixBatcherSortALL::LocalBatcherMerge(std::vector<std::vector<i
 void LevonychevIRadixBatcherSortALL::GlobalSortPhase(std::vector<int> &local_data, int rank, int size) {
   for (int p = 1; p < size; p <<= 1) {
     for (int k = p; k > 0; k >>= 1) {
-      for (int j = k % p; j <= size - 1 - k; j += 2 * k) {
-        for (int i = 0; i < std::min(k, size - j - k); ++i) {
-          int idx1 = j + i;
-          int idx2 = j + i + k;
-          if ((idx1 / (p * 2)) == (idx2 / (p * 2))) {
-            if (rank == idx1) {
-              NetworkMergeAndSplit(local_data, idx2, true);
-            } else if (rank == idx2) {
-              NetworkMergeAndSplit(local_data, idx1, false);
-            }
-          }
-        }
-      }
+      GlobalBatcherStep(local_data, rank, size, p, k);
       MPI_Barrier(MPI_COMM_WORLD);
     }
   }

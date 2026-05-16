@@ -39,6 +39,19 @@
 
 ```cpp
 #pragma omp parallel default(none) shared(num_threads, block_size, n, std::ranges::copy) num_threads(num_threads)
+  {
+    int tid = omp_get_thread_num();
+    int left = tid * block_size;
+    int right = (tid == num_threads - 1) ? n : (tid + 1) * block_size;
+
+    if (left < right) {
+      std::vector<int> local_block(GetOutput().begin() + left, GetOutput().begin() + right);
+      for (size_t i = 0; i < sizeof(int); ++i) {
+        CountingSort(local_block, i);
+      }
+      std::ranges::copy(local_block, GetOutput().begin() + left);
+    }
+  }
 ```
 
 - **Какая область кода параллелится:** Весь блок внутри фигурных скобок, где каждый поток вычисляет свои локальные
@@ -62,6 +75,9 @@
 
 ```cpp
 #pragma omp parallel for schedule(static) default(none) shared(n, pv, p2, k, arr) num_threads(threads)
+      for (int j = k % pv; j < n - k; j += 2 * k) {
+        BatcherCompareRange(arr, j, k, p2);
+      }
 ```
 
 - **Какая область кода параллелится:** Внутренний цикл по переменной `j`, который инициирует работу компараторов
